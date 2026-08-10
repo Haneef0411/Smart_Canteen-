@@ -56,7 +56,9 @@ class CartController extends ChangeNotifier {
   double get total =>
       items.entries.fold(0, (sum, e) => sum + e.key.price * e.value);
   void add(FoodItem item, {int quantity = 1}) {
-    if (item.availability != Availability.soldOut && quantity > 0) {
+    if (item.isAvailable &&
+        item.availability != Availability.soldOut &&
+        quantity > 0) {
       _registry[item.id] = item;
       _quantities[item.id] = quantityOf(item) + quantity;
       notifyListeners();

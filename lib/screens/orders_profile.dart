@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/firebase_service.dart';
+import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -18,7 +19,7 @@ class OrdersScreen extends StatelessWidget {
       ),
     ),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: firestoreService.orders(),
+      stream: firestoreService.currentUserOrders(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return const EmptyState(
@@ -30,10 +31,16 @@ class OrdersScreen extends StatelessWidget {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final docs = snapshot.data!.docs
-            .where((d) => d.data()['userId'] == uid)
-            .toList();
+        final docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final first =
+                (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
+                0;
+            final second =
+                (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
+                0;
+            return second.compareTo(first);
+          });
         if (docs.isEmpty) {
           return const EmptyState(
             icon: Icons.receipt_long_outlined,
@@ -43,12 +50,20 @@ class OrdersScreen extends StatelessWidget {
         }
         final active = docs
             .where(
-              (d) => !['Collected', 'Cancelled'].contains(d.data()['status']),
+              (d) => !['Collected', 'Cancelled'].contains(
+                orderStatusDisplay(
+                  d.data()['orderStatus'] ?? d.data()['status'],
+                ),
+              ),
             )
             .toList();
         final previous = docs
             .where(
-              (d) => ['Collected', 'Cancelled'].contains(d.data()['status']),
+              (d) => ['Collected', 'Cancelled'].contains(
+                orderStatusDisplay(
+                  d.data()['orderStatus'] ?? d.data()['status'],
+                ),
+              ),
             )
             .toList();
         return ListView(
@@ -90,7 +105,7 @@ class OrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ts = data['createdAt'] as Timestamp?;
     final date = ts?.toDate();
-    final status = data['status'] as String? ?? 'Pending';
+    final status = orderStatusDisplay(data['orderStatus'] ?? data['status']);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Card(
@@ -139,7 +154,11 @@ class OrderCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      money((data['total'] as num?)?.toDouble() ?? 0),
+                      money(
+                        ((data['totalAmount'] ?? data['total']) as num?)
+                                ?.toDouble() ??
+                            0,
+                      ),
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         color: AppColors.greenDark,
@@ -147,7 +166,7 @@ class OrderCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      'Pickup ${data['pickupTime'] ?? '—'}',
+                      'Pickup ${data['collectionTime'] ?? data['pickupTime'] ?? '—'}',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(width: 4),
@@ -168,14 +187,14 @@ class OrderDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
   static const steps = [
     'Pending',
-    'Confirmed',
+    'Accepted',
     'Preparing',
     'Ready',
     'Collected',
   ];
   @override
   Widget build(BuildContext context) {
-    final status = data['status'] as String? ?? 'Pending';
+    final status = orderStatusDisplay(data['orderStatus'] ?? data['status']);
     final current = steps.indexOf(status);
     final items = (data['items'] as List? ?? []).cast<Map<String, dynamic>>();
     return Scaffold(
@@ -286,14 +305,42 @@ class OrderDetailScreen extends StatelessWidget {
                   const Divider(),
                   SummaryRow(
                     label: 'Total',
-                    value: money((data['total'] as num?)?.toDouble() ?? 0),
+                    value: money(
+                      ((data['totalAmount'] ?? data['total']) as num?)
+                              ?.toDouble() ??
+                          0,
+                    ),
                     bold: true,
                   ),
                   const SizedBox(height: 12),
                   SummaryRow(
                     label: 'Pickup time',
-                    value: data['pickupTime'] as String? ?? '—',
+                    value: (data['collectionTime'] ?? data['pickupTime'] ?? '—')
+                        .toString(),
                   ),
+                  const SizedBox(height: 12),
+                  SummaryRow(
+                    label: 'Payment',
+                    value: (data['paymentMethod'] ?? 'Cash on collection')
+                        .toString(),
+                  ),
+                  const SizedBox(height: 12),
+                  SummaryRow(
+                    label: 'Payment status',
+                    value: (data['paymentStatus'] ?? 'pending').toString(),
+                  ),
+                  if ((data['specialInstructions'] ?? data['notes'] ?? '')
+                      .toString()
+                      .isNotEmpty) ...[
+                    const Divider(height: 28),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Instructions: ${data['specialInstructions'] ?? data['notes']}',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -323,6 +370,7 @@ class ProfileScreen extends StatelessWidget {
           final name = data['name'] as String? ?? user.displayName ?? 'Student';
           final email = data['email'] as String? ?? user.email ?? '';
           final phone = data['phone'] as String? ?? '';
+          final profile = UserProfile.fromMap(data);
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
             children: [
@@ -366,6 +414,13 @@ class ProfileScreen extends StatelessWidget {
                                 phone,
                                 style: const TextStyle(color: AppColors.muted),
                               ),
+                            if (profile.registrationNumber.isNotEmpty)
+                              Text(
+                                profile.registrationNumber,
+                                style: const TextStyle(color: AppColors.muted),
+                              ),
+                            const SizedBox(height: 5),
+                            StatusBadge(profile.role.name.toUpperCase()),
                           ],
                         ),
                       ),
@@ -383,6 +438,16 @@ class ProfileScreen extends StatelessWidget {
               Card(
                 child: Column(
                   children: [
+                    ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: const Text('Order history'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
                     ListTile(
                       leading: const Icon(Icons.person_outline),
                       title: const Text('Edit profile'),

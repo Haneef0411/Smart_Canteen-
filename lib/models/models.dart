@@ -2,6 +2,18 @@ import 'package:flutter/material.dart';
 
 enum Availability { available, limited, soldOut }
 
+String orderStatusDisplay(Object? value) {
+  final raw = (value ?? 'pending').toString().trim().toLowerCase();
+  return switch (raw) {
+    'confirmed' || 'accepted' => 'Accepted',
+    'preparing' => 'Preparing',
+    'ready' => 'Ready',
+    'collected' => 'Collected',
+    'cancelled' || 'canceled' => 'Cancelled',
+    _ => 'Pending',
+  };
+}
+
 Availability availabilityFrom(String? value) => switch (value) {
   'limited' => Availability.limited,
   'soldOut' => Availability.soldOut,
@@ -23,12 +35,16 @@ class FoodItem {
     required this.price,
     required this.minutes,
     required this.icon,
+    this.imageUrl = '',
+    this.isAvailable = true,
     this.availability = Availability.available,
   });
   final String id, name, description, category;
   final double price;
   final int minutes;
   final IconData icon;
+  final String imageUrl;
+  final bool isAvailable;
   final Availability availability;
 
   String? get imageAsset =>
@@ -53,6 +69,8 @@ class FoodItem {
       price: price,
       minutes: minutes,
       icon: icon,
+      imageUrl: imageUrl,
+      isAvailable: isAvailable,
       availability: availability,
     );
   }
@@ -65,6 +83,8 @@ class FoodItem {
     price: ((data['price'] as num?)?.toDouble() ?? 0),
     minutes: (data['minutes'] as num?)?.toInt() ?? 0,
     icon: _icons[data['icon'] as String?] ?? Icons.restaurant_menu,
+    imageUrl: data['imageUrl'] as String? ?? '',
+    isAvailable: data['isAvailable'] as bool? ?? true,
     availability: availabilityFrom(data['availability'] as String?),
   );
 
@@ -75,6 +95,8 @@ class FoodItem {
     'price': price,
     'minutes': minutes,
     'icon': iconName(icon),
+    'imageUrl': imageUrl,
+    'isAvailable': isAvailable,
     'availability': availabilityTo(availability),
   };
 
@@ -230,6 +252,9 @@ class UserProfile {
   final UserRole role;
 
   bool get isStaff => role == UserRole.staff;
+  bool get isAdmin => role == UserRole.admin;
+  bool get canManageCanteen => isStaff || isAdmin;
+  String get registrationNumber => studentId;
 
   factory UserProfile.fromMap(Map<String, dynamic>? data) {
     final map = data ?? const {};
@@ -237,13 +262,28 @@ class UserProfile {
       name: map['name'] as String? ?? '',
       email: map['email'] as String? ?? '',
       phone: map['phone'] as String? ?? '',
-      studentId: map['studentId'] as String? ?? '',
-      role: map['role'] == 'staff' ? UserRole.staff : UserRole.student,
+      studentId:
+          map['registrationNumber'] as String? ??
+          map['studentId'] as String? ??
+          '',
+      role: UserRole.fromFirestore(map['role']),
     );
   }
 }
 
-enum UserRole { student, staff }
+enum UserRole {
+  student,
+  staff,
+  admin;
+
+  static UserRole fromFirestore(Object? value) => switch (value) {
+    'staff' => UserRole.staff,
+    'admin' => UserRole.admin,
+    _ => UserRole.student,
+  };
+
+  String get firestoreValue => name;
+}
 
 class OrderData {
   const OrderData({
@@ -260,4 +300,34 @@ class OrderData {
   final double total;
   final int itemCount;
   final List<Map<String, dynamic>> items;
+
+  factory OrderData.fromMap(String id, Map<String, dynamic> map) => OrderData(
+    id: id,
+    status: orderStatusDisplay(map['orderStatus'] ?? map['status']),
+    createdAt: _dateTimeFrom(map['createdAt']),
+    pickupTime: (map['collectionTime'] ?? map['pickupTime'] ?? '').toString(),
+    total: ((map['totalAmount'] ?? map['total']) as num?)?.toDouble() ?? 0,
+    itemCount: (map['itemCount'] as num?)?.toInt() ?? 0,
+    items: (map['items'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(),
+  );
+
+  Map<String, dynamic> toMap() => {
+    'orderStatus': status,
+    'collectionTime': pickupTime,
+    'totalAmount': total,
+    'itemCount': itemCount,
+    'items': items,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  static DateTime _dateTimeFrom(Object? value) {
+    if (value is DateTime) return value;
+    if (value is String) {
+      return DateTime.tryParse(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
 }

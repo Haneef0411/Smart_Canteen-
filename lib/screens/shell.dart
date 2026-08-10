@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import 'cart_checkout.dart';
 import 'orders_profile.dart';
 import 'staff.dart';
+import 'admin.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -23,20 +24,37 @@ class _AppShellState extends State<AppShell> {
       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: firestoreService.profile(),
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Scaffold(
+              body: EmptyState(
+                icon: Icons.cloud_off_outlined,
+                title: 'Profile unavailable',
+                message: 'Check your connection and try again.',
+              ),
+            );
+          }
           final profile = UserProfile.fromMap(snapshot.data?.data());
+          if (profile.isAdmin) return const AdminScreen();
+          if (profile.isStaff) return const StaffScreen();
           return ListenableBuilder(
             listenable: cart,
             builder: (context, _) {
-              final isStaff = profile.isStaff;
               return Scaffold(
                 body: IndexedStack(
                   index: _index,
                   children: [
-                    MenuScreen(onCart: () => setState(() => _index = 2)),
+                    MenuScreen(
+                      onCart: () => setState(() => _index = 2),
+                      onOrders: () => setState(() => _index = 1),
+                    ),
                     const OrdersScreen(),
                     CartScreen(onBrowse: () => setState(() => _index = 0)),
                     const ProfileScreen(),
-                    if (isStaff) const StaffScreen(),
                   ],
                 ),
                 bottomNavigationBar: NavigationBar(
@@ -71,12 +89,6 @@ class _AppShellState extends State<AppShell> {
                       selectedIcon: Icon(Icons.person),
                       label: 'Profile',
                     ),
-                    if (isStaff)
-                      const NavigationDestination(
-                        icon: Icon(Icons.manage_accounts_outlined),
-                        selectedIcon: Icon(Icons.manage_accounts),
-                        label: 'Manage',
-                      ),
                   ],
                 ),
               );
@@ -87,8 +99,8 @@ class _AppShellState extends State<AppShell> {
 }
 
 class MenuScreen extends StatefulWidget {
-  const MenuScreen({super.key, required this.onCart});
-  final VoidCallback onCart;
+  const MenuScreen({super.key, required this.onCart, required this.onOrders});
+  final VoidCallback onCart, onOrders;
   @override
   State<MenuScreen> createState() => _MenuScreenState();
 }
@@ -97,7 +109,7 @@ class _MenuScreenState extends State<MenuScreen>
     with SingleTickerProviderStateMixin {
   final _search = TextEditingController();
   late final AnimationController _entrance;
-  String _query = '', _category = 'All';
+  String _query = '', _category = 'All', _availability = 'All';
   static const categories = ['All', ...FoodItem.categories];
 
   @override
@@ -119,6 +131,15 @@ class _MenuScreenState extends State<MenuScreen>
   List<FoodItem> filter(List<FoodItem> all) => all.where((f) {
     final q = _query.toLowerCase();
     return (_category == 'All' || f.category == _category) &&
+        (_availability == 'All' ||
+            (_availability == 'Available' &&
+                f.isAvailable &&
+                f.availability == Availability.available) ||
+            (_availability == 'Limited' &&
+                f.isAvailable &&
+                f.availability == Availability.limited) ||
+            (_availability == 'Sold Out' &&
+                (!f.isAvailable || f.availability == Availability.soldOut))) &&
         '${f.name} ${f.description} ${f.category}'.toLowerCase().contains(q);
   }).toList();
 
@@ -178,6 +199,11 @@ class _MenuScreenState extends State<MenuScreen>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'View orders',
+            onPressed: widget.onOrders,
+            icon: const Icon(Icons.receipt_long_outlined),
+          ),
           IconButton(
             tooltip: 'Open cart',
             onPressed: widget.onCart,
@@ -273,6 +299,34 @@ class _MenuScreenState extends State<MenuScreen>
                               label: Text(c),
                               selected: c == _category,
                               onSelected: (_) => setState(() => _category = c),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 38,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: const [
+                            'All',
+                            'Available',
+                            'Limited',
+                            'Sold Out',
+                          ].length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (_, i) {
+                            final value = const [
+                              'All',
+                              'Available',
+                              'Limited',
+                              'Sold Out',
+                            ][i];
+                            return FilterChip(
+                              label: Text(value),
+                              selected: _availability == value,
+                              onSelected: (_) =>
+                                  setState(() => _availability = value),
                             );
                           },
                         ),
@@ -699,7 +753,7 @@ class FoodCard extends StatelessWidget {
   final Animation<double> animation;
   @override
   Widget build(BuildContext context) {
-    final sold = item.availability == Availability.soldOut;
+    final sold = !item.isAvailable || item.availability == Availability.soldOut;
     final status = switch (item.availability) {
       Availability.available => 'Available',
       Availability.limited => 'Limited',
@@ -729,18 +783,7 @@ class FoodCard extends StatelessWidget {
                     width: 122,
                     height: double.infinity,
                     color: AppColors.greenSoft,
-                    child: item.imageAsset == null
-                        ? Icon(item.icon, size: 44, color: AppColors.green)
-                        : Image.asset(
-                            item.imageAsset!,
-                            fit: BoxFit.cover,
-                            cacheWidth: 240,
-                            errorBuilder: (_, _, _) => Icon(
-                              item.icon,
-                              size: 44,
-                              color: AppColors.green,
-                            ),
-                          ),
+                    child: MenuItemImage(item: item),
                   ),
                 ),
                 const SizedBox(width: 16),

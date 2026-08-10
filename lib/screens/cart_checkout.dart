@@ -4,6 +4,7 @@ import '../services/firebase_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import 'orders_profile.dart' show OrdersScreen;
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key, required this.onBrowse});
@@ -110,9 +111,7 @@ class CartRow extends StatelessWidget {
               width: 64,
               height: 64,
               color: AppColors.greenSoft,
-              child: item.imageAsset == null
-                  ? Icon(item.icon, color: AppColors.green, size: 32)
-                  : Image.asset(item.imageAsset!, fit: BoxFit.cover),
+              child: MenuItemImage(item: item),
             ),
           ),
           const SizedBox(width: 12),
@@ -235,6 +234,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
     if (_loading || cart.items.isEmpty) return;
+    if (_payment == 'Card Payment (Demo)') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('Demo card payment'),
+          content: const Text(
+            'This is a simulation for assessment purposes. No card details or real payment will be requested.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Confirm demo payment'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     setState(() => _loading = true);
     try {
       final snapshot = cart.items;
@@ -337,9 +358,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 subtitle: Text('Pay when you collect your order'),
               ),
               RadioListTile(
-                value: 'Card at counter',
-                title: Text('Card at counter'),
-                subtitle: Text('Pay by card when collecting'),
+                value: 'Card Payment (Demo)',
+                title: Text('Card Payment (Demo)'),
+                subtitle: Text(
+                  'Simulated payment — never enter real card details',
+                ),
               ),
             ],
           ),
@@ -456,6 +479,17 @@ class OrderSuccessScreen extends StatelessWidget {
                     onPressed: () =>
                         Navigator.popUntil(context, (route) => route.isFirst),
                     child: const Text('Back to home'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                    ),
+                    child: const Text('View orders'),
                   ),
                 ),
               ],

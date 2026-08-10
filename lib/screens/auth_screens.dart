@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/firebase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../utils/validators.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -112,9 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
               labelText: 'Email address',
               prefixIcon: Icon(Icons.mail_outline),
             ),
-            validator: (v) => (v == null || !v.contains('@'))
-                ? 'Enter a valid email address'
-                : null,
+            validator: Validators.email,
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -135,8 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-            validator: (v) =>
-                (v?.isEmpty ?? true) ? 'Enter your password' : null,
+            validator: Validators.requiredPassword,
           ),
           Align(
             alignment: Alignment.centerRight,
@@ -195,12 +193,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _id = TextEditingController(),
       _email = TextEditingController(),
       _password = TextEditingController(),
-      _confirm = TextEditingController(),
-      _staffCode = TextEditingController();
+      _confirm = TextEditingController();
   bool _hidden = true, _loading = false;
   @override
   void dispose() {
-    for (final c in [_name, _id, _email, _password, _confirm, _staffCode]) {
+    for (final c in [_name, _id, _email, _password, _confirm]) {
       c.dispose();
     }
     super.dispose();
@@ -212,10 +209,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final profileSaved = await authService.register(
         name: _name.text,
-        studentId: _id.text,
+        registrationNumber: _id.text,
         email: _email.text,
         password: _password.text,
-        staffCode: _staffCode.text,
       );
       if (mounted) {
         Navigator.pop(context);
@@ -254,27 +250,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
             style: TextStyle(color: AppColors.muted),
           ),
           const SizedBox(height: 24),
-          _field(
-            _name,
-            'Full name',
-            Icons.person_outline,
-            (v) => (v?.trim().length ?? 0) < 2 ? 'Enter your full name' : null,
-          ),
+          _field(_name, 'Full name', Icons.person_outline, Validators.name),
           const SizedBox(height: 14),
           _field(
             _id,
-            'Student ID',
+            'Registration number',
             Icons.badge_outlined,
-            (v) => (v?.trim().isEmpty ?? true) ? 'Enter your student ID' : null,
+            Validators.registrationNumber,
           ),
           const SizedBox(height: 14),
           _field(
             _email,
             'Email address',
             Icons.mail_outline,
-            (v) => (v == null || !v.contains('@'))
-                ? 'Enter a valid email address'
-                : null,
+            Validators.email,
             type: TextInputType.emailAddress,
           ),
           const SizedBox(height: 14),
@@ -294,9 +283,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
             ),
-            validator: (v) => (v?.length ?? 0) < 8
-                ? 'Password must be at least 8 characters'
-                : null,
+            validator: Validators.password,
           ),
           const SizedBox(height: 14),
           TextFormField(
@@ -307,17 +294,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               labelText: 'Confirm password',
               prefixIcon: Icon(Icons.lock_reset_outlined),
             ),
-            validator: (v) =>
-                v != _password.text ? 'Passwords do not match' : null,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _staffCode,
-            decoration: const InputDecoration(
-              labelText: 'Staff access code (optional)',
-              helperText: 'Canteen staff only — ask the administrator',
-              prefixIcon: Icon(Icons.admin_panel_settings_outlined),
-            ),
+            validator: (v) => Validators.confirmation(v, _password.text),
           ),
           const SizedBox(height: 24),
           FilledButton(

@@ -1,5 +1,33 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../models/models.dart';
+
+class MenuItemImage extends StatelessWidget {
+  const MenuItemImage({super.key, required this.item, this.fit = BoxFit.cover});
+  final FoodItem item;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget fallback() => item.imageAsset == null
+        ? Icon(item.icon, color: AppColors.green, size: 34)
+        : Image.asset(
+            item.imageAsset!,
+            fit: fit,
+            errorBuilder: (_, _, _) =>
+                Icon(item.icon, color: AppColors.green, size: 34),
+          );
+    if (item.imageUrl.trim().isEmpty) return fallback();
+    return Image.network(
+      item.imageUrl,
+      fit: fit,
+      loadingBuilder: (context, child, progress) => progress == null
+          ? child
+          : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      errorBuilder: (_, _, _) => fallback(),
+    );
+  }
+}
 
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 72});

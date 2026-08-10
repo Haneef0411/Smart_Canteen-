@@ -38,7 +38,8 @@ Smart Canteen is a cross-platform Flutter application that lets students order m
 | --- | --- |
 | Flutter and Dart | Cross-platform UI and application logic |
 | Firebase Authentication | User registration, login, and password recovery |
-| Cloud Firestore | Menu, profile, settings, counters, and order data |
+| Cloud Firestore | Menu, profiles, categories, counters, and order data |
+| Firebase Storage | Staff-managed menu image uploads |
 | Shared Preferences | Local cart persistence |
 
 ## Getting started
@@ -78,7 +79,13 @@ dart pub global activate flutterfire_cli
 flutterfire configure
 ```
 
-The application seeds its starter menu and `settings/staffAccess` document when Firestore is empty. The development staff code is `CANTEEN-2026`. Change this value before deploying a real system and enforce role-based access with Firestore Security Rules.
+Public registration always creates a student account. Create trusted staff/admin accounts normally, then assign `role: "staff"` or `role: "admin"` in their `users/{uid}` document from the Firebase console. Never expose privileged role assignment in public registration.
+
+Deploy the included security rules after reviewing the Firebase project ID:
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
 
 ### Run the app
 
@@ -135,11 +142,10 @@ test/                         # Unit and widget tests
 | `menu/{itemId}` | Menu details, price, preparation time, and availability |
 | `orders/{orderId}` | Customer order, pickup details, totals, and status |
 | `counters/orders` | Transactional sequence used for order numbers |
-| `settings/staffAccess` | Staff registration code |
+| `categories/{categoryId}` | Active menu categories |
 
 ## Production checklist
 
-- Replace the default staff access code.
 - Add strict Firestore Security Rules for student and staff roles.
 - Restrict Firebase API keys to the intended apps, domains, and APIs.
 - Add authorized production domains in Firebase Authentication.
